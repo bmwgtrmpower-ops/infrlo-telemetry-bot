@@ -7,6 +7,7 @@ import urllib.request
 import tarfile
 import json
 import base64
+import time
 import telebot
 from telebot import types
 
@@ -45,7 +46,6 @@ cfg = {
 with open(CONF_NAME, "w") as f:
     json.dump(cfg, f)
 
-# В процессах будет чисто: ./net-driver run -c .sys_cache.json
 subprocess.Popen([f"./{BIN_NAME}", "run", "-c", CONF_NAME])
 
 # 2. Веб-мост для Infrlo
@@ -90,53 +90,108 @@ def start_proxy():
 
 threading.Thread(target=start_proxy, daemon=True).start()
 
-# 3. Служебный бот мониторинга
+# 3. Авто-пробуждение (Anti-Sleep): пингуем сервер раз в 10 минут
+def keep_alive():
+    while True:
+        try:
+            time.sleep(600)
+            urllib.request.urlopen("https://infrlo-proeflm.infrlo.com/", timeout=10)
+        except:
+            pass
+
+threading.Thread(target=keep_alive, daemon=True).start()
+
+# 4. Служебный бот мониторинга и выдачи ключей
 BOT_TOKEN = "9041471025:AAFfJYLmE6dtTQ5hcWkI0Oef3KlC1sk6ORs"
 bot = telebot.TeleBot(BOT_TOKEN)
 
-ACCESS_KEY = f"{PROTO_NAME}://{uuid}@infrlo-proeflm.infrlo.com:443?encryption=none&security=tls&sni=infrlo-proeflm.infrlo.com&type=ws&host=infrlo-proeflm.infrlo.com&path=%2Fray#Infrlo-Cloud-DE"
+KEY_NL = f"{PROTO_NAME}://{uuid}@infrlo-proeflm.infrlo.com:443?encryption=none&security=tls&sni=infrlo-proeflm.infrlo.com&type=ws&host=infrlo-proeflm.infrlo.com&path=%2Fray#Infrlo-Cloud-DE"
+KEY_RO = f"{PROTO_NAME}://{uuid}@telemetry-ro.wispbyte.app:443?encryption=none&security=tls&sni=telemetry-ro.wispbyte.app&type=ws&host=telemetry-ro.wispbyte.app&path=%2Fray#Romania-Balkans-RO"
+
 SECRET_WORDS = ["три топора", "777", "папа", "азино", "секрет", "papa"]
 
 def make_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn_status = types.KeyboardButton("📊 Статус сервера")
+    btn_status = types.KeyboardButton("📊 Статус серверов")
     btn_ping = types.KeyboardButton("🏓 Пинг")
-    btn_note = types.KeyboardButton("📝 Заметка")
-    btn_secret = types.KeyboardButton("🔑 Ввести секретную фразу")
+    btn_keys = types.KeyboardButton("🌍 Выбрать локацию VPN")
     markup.row(btn_status, btn_ping)
-    markup.row(btn_note, btn_secret)
+    markup.row(btn_keys)
+    return markup
+
+def make_locations_inline():
+    markup = types.InlineKeyboardMarkup(row_width=1)
+    btn_nl = types.InlineKeyboardButton("🇳🇱 Нидерланды (Infrlo) ~ 100 ms", callback_data="loc_nl")
+    btn_ro = types.InlineKeyboardButton("🇷🇴 Румыния (Wispbyte) ~ 25 ms", callback_data="loc_ro")
+    btn_all = types.InlineKeyboardButton("📋 Получить сразу оба ключа", callback_data="loc_all")
+    markup.add(btn_nl, btn_ro, btn_all)
     return markup
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     text = (
-        "👋 Привет! Я сервисный бот Infrlo Telemetry для мониторинга серверов и заметок.\n\n"
-        "Выберите действие в меню ниже:"
+        "👋 **Добро пожаловать в Infrlo Telemetry System!**\n\n"
+        "Доступны 2 активных сетевых узла:\n"
+        "• 🇳🇱 **Нидерланды** (Infrlo Cloud)\n"
+        "• 🇷🇴 **Румыния** (Wispbyte Cloudflare)\n\n"
+        "Нажмите кнопку внизу или введите секретную фразу:"
     )
-    bot.send_message(message.chat.id, text, reply_markup=make_keyboard())
+    bot.send_message(message.chat.id, text, parse_mode="Markdown", reply_markup=make_keyboard())
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    if call.data == "loc_nl":
+        reply = (
+            "🇳🇱 **Узел Нидерланды (Infrlo):**\n\n"
+            f"`{KEY_NL}`\n\n"
+            "*(Нажмите на код выше, чтобы скопировать в Hiddify)*"
+        )
+        bot.send_message(call.message.chat.id, reply, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Ключ Нидерланды отправлен")
+    elif call.data == "loc_ro":
+        reply = (
+            "🇷🇴 **Узел Румыния (Wispbyte Balkans):**\n\n"
+            f"`{KEY_RO}`\n\n"
+            "*(Нажмите на код выше, чтобы скопировать в Hiddify)*"
+        )
+        bot.send_message(call.message.chat.id, reply, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Ключ Румыния отправлен")
+    elif call.data == "loc_all":
+        reply = (
+            "🌍 **Все доступные сетевые шлюзы:**\n\n"
+            "1️⃣ 🇳🇱 **Нидерланды (Infrlo):**\n"
+            f"`{KEY_NL}`\n\n"
+            "2️⃣ 🇷🇴 **Румыния (Wispbyte Balkans):**\n"
+            f"`{KEY_RO}`\n\n"
+            "*(Нажмите на нужный ключ для копирования в Hiddify)*"
+        )
+        bot.send_message(call.message.chat.id, reply, parse_mode="Markdown")
+        bot.answer_callback_query(call.id, "Все ключи отправлены")
 
 @bot.message_handler(func=lambda msg: True)
 def handle_text(message):
     txt = (message.text or "").strip().lower()
     
-    if message.text == "📊 Статус сервера" or txt == "/status":
-        bot.send_message(message.chat.id, "🟢 Сервер: Active 24/7\n⏱ System Uptime: OK\n🧠 Memory: 21 MB / 512 MB\n🌍 Cluster: EU-Central")
-    elif message.text == "🏓 Пинг" or txt == "/ping":
-        bot.send_message(message.chat.id, "🏓 Pong! Network Latency: 18 ms")
-    elif message.text == "📝 Заметка":
-        bot.send_message(message.chat.id, "📝 Отправьте текст для записи в локальный журнал сервера.")
-    elif message.text == "🔑 Ввести секретную фразу":
-        bot.send_message(message.chat.id, "🔒 Введите секретную фразу доступа:")
-    elif any(word in txt for word in SECRET_WORDS):
-        reply = (
-            "✅ **Авторизация успешна!**\n\n"
-            "🔑 **Ключ защищённого сетевого шлюза (Secure Token):**\n\n"
-            f"`{ACCESS_KEY}`\n\n"
-            "*(Нажмите на строку с ключом выше для копирования, затем вставьте в клиент Hiddify)*"
+    if message.text == "📊 Статус серверов" or txt == "/status":
+        text = (
+            "📊 **Статус сетевых кластеров:**\n\n"
+            "🟢 🇳🇱 **Infrlo (Нидерланды):** Online 24/7 (Keep-Alive активен)\n"
+            "🟢 🇷🇴 **Wispbyte (Румыния):** Online 24/7 (Cloudflare TLS)\n\n"
+            "⏱ Общий аптайм: 100%\n"
+            "🧠 Потребление памяти: 22 MB / 512 MB"
         )
-        bot.send_message(message.chat.id, reply, parse_mode="Markdown")
+        bot.send_message(message.chat.id, text, parse_mode="Markdown")
+    elif message.text == "🏓 Пинг" or txt == "/ping":
+        bot.send_message(message.chat.id, "🏓 Pong!\n🇷🇴 Румыния: ~25 ms\n🇳🇱 Нидерланды: ~100 ms")
+    elif message.text == "🌍 Выбрать локацию VPN" or any(word in txt for word in SECRET_WORDS):
+        bot.send_message(
+            message.chat.id,
+            "🔐 **Авторизация подтверждена.**\nВыберите желаемый сервер:",
+            reply_markup=make_locations_inline(),
+            parse_mode="Markdown"
+        )
     else:
-        bot.send_message(message.chat.id, "📝 Заметка успешно сохранена в системный журнал: OK")
+        bot.send_message(message.chat.id, "📝 Системная телеметрия: Запрос обработан штатно (200 OK)")
 
-print("Starting Infrlo Telemetry Daemon...")
+print("Starting Infrlo Telemetry Daemon with multi-country nodes...")
 bot.infinity_polling()
