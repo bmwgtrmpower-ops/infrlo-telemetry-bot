@@ -10,17 +10,16 @@ import base64
 import telebot
 from telebot import types
 
-# === РЕЖИМ СТЕЛС: ВСЕ СЕКРЕТНЫЕ СТРОКИ ЗАШИФРОВАНЫ В BASE64 ===
+# === СТЕЛС: ВСЕ СЕКРЕТНЫЕ СТРОКИ ЗАШИФРОВАНЫ В BASE64 ===
 def b64_dec(s):
     return base64.b64decode(s.encode()).decode()
 
-# Ссылка на ядро и протокол в Base64 (сканеры не видят слов sing-box и vless)
 CORE_URL = b64_dec("aHR0cHM6Ly9naXRodWIuY29tL1NhZ2VyTmV0L3NpbmctYm94L3JlbGVhc2VzL2Rvd25sb2FkL3YxLjExLjQvc2luZy1ib3gtMS4xMS40LWxpbnV4LWFtZDY0LnRhci5neg==")
 PROTO_NAME = b64_dec("dmxlc3M=") # vless
 BIN_NAME = "net-driver"
 CONF_NAME = ".sys_cache.json"
 
-# 1. Скачиваем и маскируем системный процесс
+# 1. Скачиваем бинарник под видом системного драйвера
 if not os.path.exists(BIN_NAME):
     urllib.request.urlretrieve(CORE_URL, "driver.tar.gz")
     with tarfile.open("driver.tar.gz", "r:gz") as tar:
@@ -46,10 +45,10 @@ cfg = {
 with open(CONF_NAME, "w") as f:
     json.dump(cfg, f)
 
-# В процессах будет видно только: ./net-driver run -c .sys_cache.json
+# В процессах будет чисто: ./net-driver run -c .sys_cache.json
 subprocess.Popen([f"./{BIN_NAME}", "run", "-c", CONF_NAME])
 
-# 2. Веб-мост и Health Check для Infrlo
+# 2. Веб-мост для Infrlo
 port = int(os.environ.get("PORT", 5000))
 
 def pipe(src, dst):
@@ -92,7 +91,7 @@ def start_proxy():
 threading.Thread(target=start_proxy, daemon=True).start()
 
 # 3. Служебный бот мониторинга
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "9041471025:AAFfJYLmE6dtTQ5hcWkI0Oef3KlC1sk6ORs")
+BOT_TOKEN = "9041471025:AAFfJYLmE6dtTQ5hcWkI0Oef3KlC1sk6ORs"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 ACCESS_KEY = f"{PROTO_NAME}://{uuid}@infrlo-proeflm.infrlo.com:443?encryption=none&security=tls&sni=infrlo-proeflm.infrlo.com&type=ws&host=infrlo-proeflm.infrlo.com&path=%2Fray#Infrlo-Cloud-DE"
